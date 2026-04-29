@@ -18,13 +18,12 @@ API_VERSION <- "v20.0"
 BASE_URL <- paste0("https://graph.facebook.com/", API_VERSION, "/")
 
 # ================================
-# 🌐 FUNÇÃO API (ROBUSTA)
+# 🌐 API
 # ================================
 call_api <- function(endpoint, params = list(), full_url = FALSE) {
   url <- if (full_url) endpoint else paste0(BASE_URL, endpoint)
   
   response <- GET(url, query = if (!full_url) c(params, access_token = ACCESS_TOKEN) else NULL)
-  
   content_txt <- content(response, "text", encoding = "UTF-8")
   
   if (http_error(response)) {
@@ -35,16 +34,39 @@ call_api <- function(endpoint, params = list(), full_url = FALSE) {
 }
 
 # ================================
-# 👤 PERFIL (CORRIGIDO)
+# 👤 PERFIL (SEGURO)
 # ================================
 cat("📊 Obtendo perfil...\n")
 
+safe_fields <- c(
+  "followers_count",
+  "name",
+  "username",
+  "profile_picture_url"
+)
+
 profile_data <- call_api(
   INSTAGRAM_BUSINESS_ACCOUNT_ID,
-  params = list(
-    fields = "followers_count,name,username,biography,profile_picture_url,website"
-  )
+  params = list(fields = paste(safe_fields, collapse = ","))
 )
+
+# tentar campos opcionais sem quebrar
+optional_fields <- c("biography", "website")
+
+for (field in optional_fields) {
+  result <- tryCatch({
+    call_api(
+      INSTAGRAM_BUSINESS_ACCOUNT_ID,
+      params = list(fields = field)
+    )
+  }, error = function(e) NULL)
+  
+  if (!is.null(result[[field]])) {
+    profile_data[[field]] <- result[[field]]
+  } else {
+    profile_data[[field]] <- NA
+  }
+}
 
 followers_count <- profile_data$followers_count
 username <- profile_data$username
@@ -52,31 +74,23 @@ username <- profile_data$username
 cat(paste0("✓ @", username, " | ", followers_count, " seguidores\n\n"))
 
 # ================================
-# 📸 MÍDIAS + PAGINAÇÃO
+# 📸 MÍDIAS
 # ================================
 cat("📸 Coletando mídias...\n")
 
 media_list <- list()
-next_page <- paste0(INSTAGRAM_BUSINESS_ACCOUNT_ID, "/media")
-media_count <- 0
+next_url <- paste0(BASE_URL, INSTAGRAM_BUSINESS_ACCOUNT_ID, "/media?fields=id,caption,media_type,media_url,thumbnail_url,timestamp,permalink,like_count,comments_count&access_token=", ACCESS_TOKEN)
 
 repeat {
-  data <- call_api(
-    next_page,
-    params = list(
-      fields = "id,caption,media_type,media_url,thumbnail_url,timestamp,permalink,like_count,comments_count",
-      limit = 100
-    )
-  )
+  response <- GET(next_url)
+  data <- fromJSON(content(response, "text", encoding = "UTF-8"), flatten = TRUE)
   
-  if (!is.null(data$data) && length(data$data) > 0) {
+  if (!is.null(data$data)) {
     media_list <- append(media_list, list(data$data))
-    media_count <- media_count + length(data$data)
   }
   
   if (!is.null(data$paging$`next`)) {
-    next_page <- data$paging$`next`
-    data <- call_api(next_page, full_url = TRUE)
+    next_url <- data$paging$`next`
   } else {
     break
   }
@@ -84,19 +98,14 @@ repeat {
 
 all_media_df <- bind_rows(media_list)
 
-cat(paste0("✓ ", media_count, " posts coletados\n\n"))
+cat(paste0("✓ ", nrow(all_media_df), " posts coletados\n\n"))
 
 # ================================
 # 📈 INSIGHTS (RESILIENTE)
 # ================================
 cat("📈 Coletando insights...\n\n")
 
-all_metrics <- c(
-  "impressions","reach","saved","shares",
-  "engagement","video_views","plays","replies"
-)
-
-metrics_string <- paste(all_metrics, collapse = ",")
+metrics <- c("impressions","reach","saved","shares","engagement","video_views")
 
 insights_data <- list()
 
@@ -108,19 +117,15 @@ for (i in seq_len(nrow(all_media_df))) {
   insights <- tryCatch({
     call_api(
       paste0(media_id, "/insights"),
-      params = list(metric = metrics_string)
+      params = list(metric = paste(metrics, collapse = ","))
     )
-  }, error = function(e) {
-    cat("   ⚠️ erro ignorado\n")
-    return(NULL)
-  })
+  }, error = function(e) NULL)
   
   if (!is.null(insights$data)) {
     df <- data.frame(media_id = media_id)
     
     for (m in insights$data) {
-      value <- tryCatch(m$values[[1]]$value, error = function(e) NA)
-      df[[m$name]] <- value
+      df[[m$name]] <- tryCatch(m$values[[1]]$value, error = function(e) NA)
     }
     
     insights_data <- append(insights_data, list(df))
@@ -135,33 +140,28 @@ if (length(insights_data) > 0) {
 }
 
 # ================================
-# 🧠 ENRIQUECIMENTO
+# 🧠 ENRIQUECER
 # ================================
-if (nrow(final_df) > 0) {
-  final_df <- final_df %>%
-    mutate(
-      followers = followers_count,
-      username = username,
-      biography = profile_data$biography,
-      website = profile_data$website,
-      collected_at = Sys.time(),
-      caption = ifelse(is.na(caption), "", caption)
-    ) %>%
-    rename(
-      likes = like_count,
-      comments = comments_count,
-      media = media_type
-    )
-}
+final_df <- final_df %>%
+  mutate(
+    followers = followers_count,
+    username = username,
+    biography = profile_data$biography,
+    website = profile_data$website,
+    collected_at = Sys.time(),
+    caption = ifelse(is.na(caption), "", caption)
+  ) %>%
+  rename(
+    likes = like_count,
+    comments = comments_count,
+    media = media_type
+  )
 
 # ================================
 # 💾 EXPORT
 # ================================
-OUTPUT_FILE <- "instagram_metrics.csv"
+write.csv(final_df, "instagram_metrics.csv", row.names = FALSE, na = "")
 
-write.csv(final_df, OUTPUT_FILE, row.names = FALSE, na = "")
-
-cat("\n✅ Export finalizado\n")
-cat(paste0("📊 Linhas: ", nrow(final_df), "\n"))
-cat(paste0("📋 Colunas: ", ncol(final_df), "\n"))
+cat("\n✅ Sucesso total\n")
+cat(paste0("📊 ", nrow(final_df), " linhas\n"))
 cat(paste0("🕐 ", Sys.time(), "\n"))
