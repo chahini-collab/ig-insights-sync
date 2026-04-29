@@ -150,28 +150,28 @@ if (length(insights_data) > 0) {
 }
 
 # ================================
-# 🧠 ENRIQUECER (CORRIGIDO)
+# 🧠 ENRIQUECER (100% CORRIGIDO)
 # ================================
 if (nrow(final_df) == 0) {
   
   cat("⚠️ Nenhuma mídia encontrada. Gerando estrutura vazia...\n")
   
   final_df <- data.frame(
-    id = character(),
-    caption = character(),
-    media = character(),
-    likes = numeric(),
-    comments = numeric(),
-    followers = followers_count,
-    username = username,
-    biography = profile_data$biography,
-    website = profile_data$website,
-    collected_at = Sys.time()
+    id = character(0),
+    caption = character(0),
+    media = character(0),
+    likes = numeric(0),
+    comments = numeric(0),
+    followers = numeric(0),
+    username = character(0),
+    biography = character(0),
+    website = character(0),
+    collected_at = character(0),
+    stringsAsFactors = FALSE
   )
   
 } else {
   
-  # garante que caption exista
   if (!"caption" %in% names(final_df)) {
     final_df$caption <- ""
   }
