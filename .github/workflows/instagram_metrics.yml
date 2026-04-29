@@ -2,35 +2,61 @@ name: Extrair Métricas do Instagram
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # Meia-noite UTC diariamente
-  workflow_dispatch:     # Permite execução manual
+    # Executa todos os dias à meia-noite (00:00 UTC)
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Permite acionar o workflow manualmente
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   extract_and_commit:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      
-      - name: Configurar R
-        uses: r-lib/actions/setup-r@v2
-        with:
-          r-version: '4.x'
-      
-      - name: Instalar Dependências
-        run: install.packages(c("httr", "jsonlite", "dplyr"))
-        shell: Rscript {0}
-      
-      - name: Executar Script
-        env:
-          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
-          INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
-        run: Rscript extract_instagram_metrics.R
-      
-      - name: Commit e Push
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+    - name: Checkout do Repositório
+      uses: actions/checkout@v4
+
+    - name: Configurar R
+      uses: r-lib/actions/setup-r@v2
+      with:
+        r-version: '4.3'
+
+    - name: Instalar Dependências do Sistema
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libcurl4-openssl-dev libssl-dev
+
+    - name: Instalar Pacotes R
+      run: |
+        Rscript -e "options(repos = c(CRAN = 'https://cloud.r-project.org')); install.packages('httr', dependencies=TRUE, verbose=TRUE)"
+        Rscript -e "options(repos = c(CRAN = 'https://cloud.r-project.org')); install.packages('jsonlite', dependencies=TRUE)"
+        Rscript -e "options(repos = c(CRAN = 'https://cloud.r-project.org')); install.packages('dplyr', dependencies=TRUE)"
+
+    - name: Verificar Pacotes Instalados
+      run: |
+        Rscript -e "library('httr'); library('jsonlite'); library('dplyr'); cat('Todos os pacotes instalados com sucesso!\n')"
+
+    - name: Executar Script R para Extrair Métricas
+      env:
+        INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+        INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
+      run: Rscript extract_instagram_metrics.R
+
+    - name: Configurar Git
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
+    - name: Adicionar e Commitar CSV
+      run: |
+        if [ -f instagram_metrics.csv ]; then
           git add instagram_metrics.csv
-          git commit -m "Atualizar métricas [skip ci]"
+          git commit -m "Atualizar métricas do Instagram [skip ci]"
           git push
+        else
+          echo "Arquivo CSV não foi gerado"
+          exit 1
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
