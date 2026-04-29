@@ -24,49 +24,53 @@ call_api <- function(endpoint, params = list(), full_url = FALSE) {
   url <- if (full_url) endpoint else paste0(BASE_URL, endpoint)
   
   response <- GET(url, query = if (!full_url) c(params, access_token = ACCESS_TOKEN) else NULL)
-  content_txt <- content(response, "text", encoding = "UTF-8")
+  txt <- content(response, "text", encoding = "UTF-8")
   
   if (http_error(response)) {
-    stop(paste("Erro na API:", status_code(response), "-", content_txt))
+    stop(txt)
   }
   
-  fromJSON(content_txt, flatten = TRUE)
+  fromJSON(txt, flatten = TRUE)
 }
 
 # ================================
-# 👤 PERFIL (SEGURO)
+# 🧠 FUNÇÃO SEGURA (TESTA CAMPOS)
+# ================================
+get_safe_profile <- function(user_id, fields) {
+  result <- list()
+  
+  for (field in fields) {
+    value <- tryCatch({
+      res <- call_api(user_id, params = list(fields = field))
+      res[[field]]
+    }, error = function(e) {
+      NULL
+    })
+    
+    result[[field]] <- ifelse(is.null(value), NA, value)
+  }
+  
+  return(result)
+}
+
+# ================================
+# 👤 PERFIL (AUTO-ADAPTÁVEL)
 # ================================
 cat("📊 Obtendo perfil...\n")
 
-safe_fields <- c(
+possible_fields <- c(
   "followers_count",
   "name",
   "username",
+  "biography",
+  "website",
   "profile_picture_url"
 )
 
-profile_data <- call_api(
+profile_data <- get_safe_profile(
   INSTAGRAM_BUSINESS_ACCOUNT_ID,
-  params = list(fields = paste(safe_fields, collapse = ","))
+  possible_fields
 )
-
-# tentar campos opcionais sem quebrar
-optional_fields <- c("biography", "website")
-
-for (field in optional_fields) {
-  result <- tryCatch({
-    call_api(
-      INSTAGRAM_BUSINESS_ACCOUNT_ID,
-      params = list(fields = field)
-    )
-  }, error = function(e) NULL)
-  
-  if (!is.null(result[[field]])) {
-    profile_data[[field]] <- result[[field]]
-  } else {
-    profile_data[[field]] <- NA
-  }
-}
 
 followers_count <- profile_data$followers_count
 username <- profile_data$username
@@ -79,7 +83,12 @@ cat(paste0("✓ @", username, " | ", followers_count, " seguidores\n\n"))
 cat("📸 Coletando mídias...\n")
 
 media_list <- list()
-next_url <- paste0(BASE_URL, INSTAGRAM_BUSINESS_ACCOUNT_ID, "/media?fields=id,caption,media_type,media_url,thumbnail_url,timestamp,permalink,like_count,comments_count&access_token=", ACCESS_TOKEN)
+next_url <- paste0(
+  BASE_URL,
+  INSTAGRAM_BUSINESS_ACCOUNT_ID,
+  "/media?fields=id,caption,media_type,media_url,timestamp,permalink,like_count,comments_count&access_token=",
+  ACCESS_TOKEN
+)
 
 repeat {
   response <- GET(next_url)
@@ -101,18 +110,19 @@ all_media_df <- bind_rows(media_list)
 cat(paste0("✓ ", nrow(all_media_df), " posts coletados\n\n"))
 
 # ================================
-# 📈 INSIGHTS (RESILIENTE)
+# 📈 INSIGHTS (INTELIGENTE)
 # ================================
 cat("📈 Coletando insights...\n\n")
 
-metrics <- c("impressions","reach","saved","shares","engagement","video_views")
+metrics <- c("impressions","reach","engagement","saved","shares","video_views")
 
 insights_data <- list()
 
 for (i in seq_len(nrow(all_media_df))) {
   media_id <- all_media_df$id[i]
+  media_type <- all_media_df$media_type[i]
   
-  cat(paste0("[", i, "/", nrow(all_media_df), "] ", media_id, "\n"))
+  cat(paste0("[", i, "/", nrow(all_media_df), "] ", media_type, "\n"))
   
   insights <- tryCatch({
     call_api(
@@ -162,6 +172,6 @@ final_df <- final_df %>%
 # ================================
 write.csv(final_df, "instagram_metrics.csv", row.names = FALSE, na = "")
 
-cat("\n✅ Sucesso total\n")
+cat("\n✅ Script finalizado SEM QUEBRAR\n")
 cat(paste0("📊 ", nrow(final_df), " linhas\n"))
 cat(paste0("🕐 ", Sys.time(), "\n"))
