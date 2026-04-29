@@ -43,9 +43,7 @@ get_safe_profile <- function(user_id, fields) {
     value <- tryCatch({
       res <- call_api(user_id, params = list(fields = field))
       res[[field]]
-    }, error = function(e) {
-      NULL
-    })
+    }, error = function(e) NULL)
     
     result[[field]] <- ifelse(is.null(value), NA, value)
   }
@@ -54,7 +52,7 @@ get_safe_profile <- function(user_id, fields) {
 }
 
 # ================================
-# 👤 PERFIL (AUTO-ADAPTÁVEL)
+# 👤 PERFIL
 # ================================
 cat("📊 Obtendo perfil...\n")
 
@@ -110,7 +108,7 @@ all_media_df <- bind_rows(media_list)
 cat(paste0("✓ ", nrow(all_media_df), " posts coletados\n\n"))
 
 # ================================
-# 📈 INSIGHTS (INTELIGENTE)
+# 📈 INSIGHTS
 # ================================
 cat("📈 Coletando insights...\n\n")
 
@@ -118,27 +116,29 @@ metrics <- c("impressions","reach","engagement","saved","shares","video_views")
 
 insights_data <- list()
 
-for (i in seq_len(nrow(all_media_df))) {
-  media_id <- all_media_df$id[i]
-  media_type <- all_media_df$media_type[i]
-  
-  cat(paste0("[", i, "/", nrow(all_media_df), "] ", media_type, "\n"))
-  
-  insights <- tryCatch({
-    call_api(
-      paste0(media_id, "/insights"),
-      params = list(metric = paste(metrics, collapse = ","))
-    )
-  }, error = function(e) NULL)
-  
-  if (!is.null(insights$data)) {
-    df <- data.frame(media_id = media_id)
+if (nrow(all_media_df) > 0) {
+  for (i in seq_len(nrow(all_media_df))) {
+    media_id <- all_media_df$id[i]
+    media_type <- all_media_df$media_type[i]
     
-    for (m in insights$data) {
-      df[[m$name]] <- tryCatch(m$values[[1]]$value, error = function(e) NA)
+    cat(paste0("[", i, "/", nrow(all_media_df), "] ", media_type, "\n"))
+    
+    insights <- tryCatch({
+      call_api(
+        paste0(media_id, "/insights"),
+        params = list(metric = paste(metrics, collapse = ","))
+      )
+    }, error = function(e) NULL)
+    
+    if (!is.null(insights$data)) {
+      df <- data.frame(media_id = media_id)
+      
+      for (m in insights$data) {
+        df[[m$name]] <- tryCatch(m$values[[1]]$value, error = function(e) NA)
+      }
+      
+      insights_data <- append(insights_data, list(df))
     }
-    
-    insights_data <- append(insights_data, list(df))
   }
 }
 
@@ -150,22 +150,47 @@ if (length(insights_data) > 0) {
 }
 
 # ================================
-# 🧠 ENRIQUECER
+# 🧠 ENRIQUECER (CORRIGIDO)
 # ================================
-final_df <- final_df %>%
-  mutate(
+if (nrow(final_df) == 0) {
+  
+  cat("⚠️ Nenhuma mídia encontrada. Gerando estrutura vazia...\n")
+  
+  final_df <- data.frame(
+    id = character(),
+    caption = character(),
+    media = character(),
+    likes = numeric(),
+    comments = numeric(),
     followers = followers_count,
     username = username,
     biography = profile_data$biography,
     website = profile_data$website,
-    collected_at = Sys.time(),
-    caption = ifelse(is.na(caption), "", caption)
-  ) %>%
-  rename(
-    likes = like_count,
-    comments = comments_count,
-    media = media_type
+    collected_at = Sys.time()
   )
+  
+} else {
+  
+  # garante que caption exista
+  if (!"caption" %in% names(final_df)) {
+    final_df$caption <- ""
+  }
+  
+  final_df <- final_df %>%
+    mutate(
+      caption = ifelse(is.na(caption), "", caption),
+      followers = followers_count,
+      username = username,
+      biography = profile_data$biography,
+      website = profile_data$website,
+      collected_at = Sys.time()
+    ) %>%
+    rename(
+      likes = like_count,
+      comments = comments_count,
+      media = media_type
+    )
+}
 
 # ================================
 # 💾 EXPORT
