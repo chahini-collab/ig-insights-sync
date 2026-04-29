@@ -2,9 +2,12 @@ name: Extrair Métricas do Instagram
 
 on:
   schedule:
-    # Executa todos os dias à meia-noite (00:00 UTC)
     - cron: '0 0 * * *'
-  workflow_dispatch: # Permite acionar o workflow manualmente
+  workflow_dispatch:
+
+# 🔥 ESSA LINHA RESOLVE O 403
+permissions:
+  contents: write
 
 env:
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
@@ -16,6 +19,8 @@ jobs:
     steps:
     - name: Checkout do Repositório
       uses: actions/checkout@v4
+      with:
+        persist-credentials: true  # garante uso do token
 
     - name: Configurar R
       uses: r-lib/actions/setup-r@v2
@@ -33,31 +38,24 @@ jobs:
         install.packages(c('httr', 'jsonlite', 'dplyr'), repos='https://cloud.r-project.org')
       shell: Rscript {0}
 
-    - name: Verificar Pacotes Instalados
-      run: |
-        Rscript -e "library('httr'); library('jsonlite'); library('dplyr'); cat('✓ Todos os pacotes instalados!\n')"
-
-    - name: Executar Script R para Extrair Métricas
+    - name: Executar Script R
       env:
         INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
         INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
       run: Rscript extract_instagram_metrics.R
 
-    - name: Configurar Git
-      run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
-
-    - name: Adicionar e Commitar CSV
+    - name: Commit e Push do CSV
       run: |
         if [ -f instagram_metrics.csv ]; then
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
           git add instagram_metrics.csv
-          git commit -m "Atualizar métricas do Instagram - $(date +'%Y-%m-%d %H:%M:%S') [skip ci]"
+          git commit -m "Atualizar métricas do Instagram - $(date +'%Y-%m-%d %H:%M:%S') [skip ci]" || echo "Nada para commitar"
+
           git push
           echo "✓ CSV atualizado com sucesso!"
         else
-          echo "✗ Erro: Arquivo CSV não foi gerado"
+          echo "✗ CSV não foi gerado"
           exit 1
         fi
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
