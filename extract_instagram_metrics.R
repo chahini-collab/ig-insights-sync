@@ -108,7 +108,7 @@ cat(paste0("✓ ", nrow(all_media_df), " posts coletados\n\n"))
 # 🧼 LIMPEZA CRÍTICA (🔥 CSV SAFE)
 # ================================
 all_media_df$caption <- all_media_df$caption %>%
-  replace_na("") %>%
+  { ifelse(is.na(.), "", .) } %>%
   str_replace_all("[\r\n]+", " ") %>%
   str_replace_all('"', "'") %>%
   str_replace_all(";", " ") %>%
