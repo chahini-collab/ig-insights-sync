@@ -12,7 +12,7 @@ for (p in packages) {
 # 🔐 CONFIG
 # ================================
 ACCESS_TOKEN <- Sys.getenv("INSTAGRAM_ACCESS_TOKEN")
-INSTAGRAM_BUSINESS_ACCOUNT_ID <- Sys.getenv("INSTAGRAM_BUSINESS_ACCOUNT_ID")
+INSTAGRAM_BUSINESS_ACCOUNT_ID <- "17841411701744440"
 
 if (ACCESS_TOKEN == "" || INSTAGRAM_BUSINESS_ACCOUNT_ID == "") {
   stop("❌ ERRO: Variáveis de ambiente não definidas")
